@@ -1,8 +1,35 @@
 import React, { Component } from 'react';
 import logo from './logo.svg';
 import './App.css';
-
+import checker from './version-checker'
 class App extends Component {
+  constructor(props) {
+    super(props);
+    checker.start();
+    setTimeout(() => {
+      console.log('Time to run more often');
+      checker.enableErrorMode();
+    }, 10 * 1000)
+
+    window.addEventListener(
+      'visibilitychange',
+      this.handleWindowVisibilityChange
+    );
+
+  }
+  componentWillUnmount() {
+    window.removeEventListener(
+      'visibilitychange',
+      this.handleWindowVisibilityChange
+    );
+  }
+  handleWindowVisibilityChange(e) {
+    // if (e.target.hidden) {
+    //   checker.stop();
+    // } else {
+    //   checker.start();
+    // }
+  }
   render() {
     return (
       <div className="App">
