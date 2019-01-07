@@ -9,7 +9,7 @@ export default class VersionChecker {
      */
     static _counter = 0; // Debug counter to know where we are and if things are processing in order and at the right speed.
     static _subscription; // Retain access to subscription to stop and restart.
-    static _errorMode = false; // ErrorMode will speed up interval checks.
+    static _isInErrorMode = false; // ErrorMode will speed up interval checks.
     static _pipeline; // Retain pipeline to restart (or re-subscribe) without reinitializing pipeline.
     static _visibilityObs = Rx.Observable.fromEvent(window, 'visibilitychange') // Register Window Event Handler. Used for filtering pipeline
         .map(e => !e.target.hidden) // We only care about the hidden value.
@@ -19,7 +19,8 @@ export default class VersionChecker {
     /**
      * Public Properties
      */
-    static onNotify = new Rx.Subject(); // Use onNotify outside of class to subscribe to know when version missmatch happens. 
+    static onNotifyServerDown = new Rx.Subject(); // Use onNotifyServerDown outside of class to subscribe to know when version missmatch happens. 
+    static onNotifyNewVersion = new Rx.Subject(); // Use onNotifyNewVersion outside of class to subscribe to know when version missmatch happens. 
 
     /**
      * Initialization Function. Creates Pipeline.
@@ -27,18 +28,19 @@ export default class VersionChecker {
     static init() { // This allows for redefining the pipeline values. Subscriptions will need to be unbsubscribed on the old pipeline.
 
         this._pipeline = Rx.Observable
-            .timer(0, this._errorMode ? second : 60 * second) // Sets the lowest interval to retry. Value can only be defined during initialization. Can't be updated with dynamic variables.
+            .timer(0, this._isInErrorMode ? second : 10 * second) // Sets the lowest interval to retry. Value can only be defined during initialization. Can't be updated with dynamic variables.
+            .takeUntil(this.onNotifyNewVersion) // End pipeline if new version is out.
             .switchMap(() => this._visibilityObs) // Merge visibility with timer. SwitchMap will drop any timer interations while visibility is false.
             .filter(visibile => visibile) // Only process if page is visible
             .exhaustMap( // Ensures that only 1 zip function runs at a time. Intervals will wait till zip function completes.
                 () => Rx.Observable.zip( // Combines multiple async operations ensuring they both complete together before moving on.
                     this.getVersion(),
-                    this.getName(),
-                    (version, name) => { // Merge values from async however you would like.
+                    this.getStatus(),
+                    (version, serverStatus) => { // Merge values from async however you would like.
                         this._counter++; // Just a DEBUG counter
                         return {
                             version,
-                            name
+                            serverStatus
                         }
                     })
                 .timeout(30 * second) // If it takes longer than 30 seconds. Kill process and restart.
@@ -69,12 +71,29 @@ export default class VersionChecker {
             try {
                 console.log('Got result', result, this._counter);
                 // TODO: Handle code required to determine if we need to display an error or change into ErrorMode.
-                this.onNotify.next(true);
-                if (this._counter % 7 === 0) {
+
+
+                if (result.version !== 1) {
+                    this.onNotifyNewVersion.next(true);
+                    return;
+                }
+
+                this.onNotifyServerDown.next(!result.serverStatus);
+                if (!result.serverStatus) {
+                    if (!this._isInErrorMode) {
+                        this.enableErrorMode();
+                    }
+                } else {
+                    if (this._isInErrorMode) {
+                        this.disableErrorMode();
+                    }
+                }
+
+                if (this._counter % 7 === 0) { // DEBUG Just forcing a crash.
                     throw new Error('Wut now?');
                 }
             } catch (err) {
-                console.log('Handled inner err', err);
+                console.log('Handled inner error', err);
             }
 
         }, err => {
@@ -101,7 +120,7 @@ export default class VersionChecker {
      * Enable error mode. Will expedite the checks.
      */
     static enableErrorMode() {
-        this._errorMode = true;
+        this._isInErrorMode = true;
         this.init().start();
         return this;
     }
@@ -110,7 +129,7 @@ export default class VersionChecker {
      * Disable error mode. This will return the pipeline back to normal check cadence. 
      */
     static disableErrorMode() {
-        this._errorMode = false;
+        this._isInErrorMode = false;
         this.init().start();
         return this;
     }
@@ -130,7 +149,7 @@ export default class VersionChecker {
         return Rx.Observable.ajax.getJSON('/manifest.json').delay(3 * second).map(x => x.version);
     }
 
-    static getName() {
-        return Rx.Observable.ajax.getJSON('/manifest.json').delay(3 * second).map(x => x.name);
+    static getStatus() {
+        return Rx.Observable.ajax.getJSON('/manifest.json').delay(3 * second).map(x => x.serverStatus);
     }
 }

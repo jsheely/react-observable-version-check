@@ -5,37 +5,29 @@ import checker from './version-checker'
 class App extends Component {
   constructor(props) {
     super(props);
+    this.state = {
+      serverDown: false
+    }
     checker.start();
-    setTimeout(() => {
-      console.log('Time to run more often');
-      checker.enableErrorMode();
-    }, 10 * 1000)
 
-    window.addEventListener(
-      'visibilitychange',
-      this.handleWindowVisibilityChange
-    );
+    checker.onNotifyServerDown.subscribe((serverDown) => {
+      this.setState({ serverDown });
+    })
 
+    checker.onNotifyNewVersion.subscribe(() => {
+      alert('New Version Available');
+      // window.location.reload();
+    })
   }
-  componentWillUnmount() {
-    window.removeEventListener(
-      'visibilitychange',
-      this.handleWindowVisibilityChange
-    );
-  }
-  handleWindowVisibilityChange(e) {
-    // if (e.target.hidden) {
-    //   checker.stop();
-    // } else {
-    //   checker.start();
-    // }
-  }
+
   render() {
     return (
       <div className="App">
         <header className="App-header">
           <img src={logo} className="App-logo" alt="logo" />
-          <p>
+          <p style={{
+            color: this.state.serverDown ? 'red' : 'inherit'
+          }}>
             Edit <code>src/App.js</code> and save to reload.
           </p>
           <a
